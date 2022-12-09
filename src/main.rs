@@ -18,18 +18,15 @@ fn handle_conn(mut stream: TcpStream) {
     let buf_reader = BufReader::new(&mut stream);
     let req_line = buf_reader.lines().next().unwrap().unwrap();
 
-    if req_line == "GET / HTTP/1.1" {
-        let status_line = "HTTP/1.1 200 OK";
-        let contents = fs::read_to_string("index.html").unwrap();
-        let resp = render_html_resp(status_line, &contents);
-
-        stream.write_all(resp.as_bytes()).unwrap();
+    let (status_line, html_file) = if req_line == "GET / HTTP/1.1" {
+        ("HTTP/1.1 200 OK", "index.html")
     } else {
-        let status_line = "HTTP/1.1 404 NOT FOUND";
-        let contents = fs::read_to_string("404.html").unwrap();
-        let resp = render_html_resp(status_line, &contents);
-        stream.write_all(resp.as_bytes()).unwrap();
-    }
+        ("HTTP/1.1 400 NOT FOUND", "404.html")
+    };
+
+    let contents = fs::read_to_string(html_file).unwrap();
+    let resp = render_html_resp(status_line, &contents);
+    stream.write_all(resp.as_bytes()).unwrap();
 }
 
 fn render_html_resp(status_line: &str, contents: &str) -> String {
