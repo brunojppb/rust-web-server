@@ -2,6 +2,8 @@ use std::{
     fs,
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
+    thread,
+    time::Duration,
 };
 
 fn main() {
@@ -18,10 +20,17 @@ fn handle_conn(mut stream: TcpStream) {
     let buf_reader = BufReader::new(&mut stream);
     let req_line = buf_reader.lines().next().unwrap().unwrap();
 
-    let (status_line, html_file) = if req_line == "GET / HTTP/1.1" {
-        ("HTTP/1.1 200 OK", "index.html")
-    } else {
-        ("HTTP/1.1 400 NOT FOUND", "404.html")
+    let (status_line, html_file) = match &req_line[..] {
+        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "index.html"),
+        // simulate slow request processing so we can play with
+        // the single-threaded server a bit.
+        "GET /sleep HTTP/1.1" => {
+            println!("slow request started...");
+            thread::sleep(Duration::from_secs(5));
+            println!("slow request done...");
+            ("HTTP/1.1 200 OK", "index.html")
+        }
+        _ => ("HTTP/1.1 400 NOT FOUND", "404.html"),
     };
 
     let contents = fs::read_to_string(html_file).unwrap();
