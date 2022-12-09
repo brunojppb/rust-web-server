@@ -16,21 +16,26 @@ fn main() {
 
 fn handle_conn(mut stream: TcpStream) {
     let buf_reader = BufReader::new(&mut stream);
-    let _http_request: Vec<_> = buf_reader
-        .lines()
-        // TODO: Do not unwrap. handle errors gracefully.
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
+    let req_line = buf_reader.lines().next().unwrap().unwrap();
 
-    let status_line = "HTTP/1.1 200 OK";
-    let contents = fs::read_to_string("index.html").unwrap();
-    let length = contents.len();
+    if req_line == "GET / HTTP/1.1" {
+        let status_line = "HTTP/1.1 200 OK";
+        let contents = fs::read_to_string("index.html").unwrap();
+        let resp = render_html_resp(status_line, &contents);
 
-    let response = format!(
+        stream.write_all(resp.as_bytes()).unwrap();
+    } else {
+        let status_line = "HTTP/1.1 404 NOT FOUND";
+        let contents = fs::read_to_string("404.html").unwrap();
+        let resp = render_html_resp(status_line, &contents);
+        stream.write_all(resp.as_bytes()).unwrap();
+    }
+}
+
+fn render_html_resp(status_line: &str, contents: &str) -> String {
+    let content_length = contents.len();
+    format!(
         "{}\r\nContent-Length: {}\r\n\r\n{}",
-        status_line, length, contents
-    );
-
-    stream.write_all(response.as_bytes()).unwrap();
+        status_line, content_length, contents
+    )
 }
