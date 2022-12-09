@@ -5,7 +5,7 @@ use std::{
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: Option<mpsc::Sender<Job>>,
 }
 
 impl ThreadPool {
@@ -37,7 +37,10 @@ impl ThreadPool {
             workers.push(w);
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool {
+            workers,
+            sender: Some(sender),
+        }
     }
 
     pub fn execute<F>(&self, f: F)
@@ -51,7 +54,24 @@ impl ThreadPool {
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
-        self.sender.send(job).unwrap();
+        self.sender.as_ref().unwrap().send(job).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        // Dropping the sender closes the channel.
+        // So no more messages can be sent.
+        drop(self.sender.take());
+        // We can now drop the worker threads by 'join'ing the
+        // running threads which will allow them to clean-up
+        // properly before the main thread shuts down.
+        for worker in &mut self.workers {
+            println!("Shutting down worker '{}'", worker.id);
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
     }
 }
 
@@ -59,7 +79,7 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 
 struct Worker {
     id: String,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
@@ -76,16 +96,27 @@ impl Worker {
                 //
                 // So the lock is released immediately released once the `recv`
                 // call gets its message.
-                //
-                // When the worker is executing the `job` call, other threads
-                // can already consume more messages in the channel.
-                let job = receiver.lock().unwrap().recv().unwrap();
-                println!("[{}] Got a job. executing...", thread_id);
-                job();
-                println!("[{}] Job done", thread_id);
+                let message = receiver.lock().unwrap().recv();
+                match message {
+                    Ok(job) => {
+                        // When the worker is executing the `job` call, other threads
+                        // can already consume more messages in the channel.
+                        println!("[{}] Got a job. executing...", thread_id);
+                        job();
+                        println!("[{}] Job done", thread_id);
+                    }
+                    Err(_) => {
+                        println!("[{}] Disconnected. Shutting down...", thread_id);
+                        // Stop the loop to allow thread shutdown
+                        break;
+                    }
+                }
             }
         });
 
-        Self { id, thread: handle }
+        Self {
+            id,
+            thread: Some(handle),
+        }
     }
 }
