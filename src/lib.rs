@@ -91,7 +91,7 @@ impl Worker {
             println!("Worker with id '{}' starting...", thread_id);
             loop {
                 // The cool thing about Rust here is that
-                // any intermediate values help during the `let` expression
+                // any intermediate values held during the `let` expression
                 // on the right side are dropped once the let statement ends.
                 //
                 // So the lock is released immediately released once the `recv`
